@@ -1,0 +1,101 @@
+name: Build Push and Deploy to EKS
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+env:
+  AWS_REGION: ${{ secrets.AWS_REGION }}
+  AWS_ACCOUNT_ID: ${{ secrets.AWS_ACCOUNT_ID }}
+  EKS_CLUSTER_NAME: ${{ secrets.EKS_CLUSTER_NAME }}
+
+jobs:
+  build-push-deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Configurar credenciales AWS Academy
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-session-token: ${{ secrets.AWS_SESSION_TOKEN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Validar conexión AWS
+        run: aws sts get-caller-identity
+
+      - name: Login en Amazon ECR
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build y push backend ventas
+        uses: docker/build-push-action@v6
+        with:
+          context: ./back-Ventas_SpringBoot/Springboot-API-REST
+          file: ./back-Ventas_SpringBoot/Springboot-API-REST/Dockerfile
+          push: true
+          tags: |
+            ${{ env.AWS_ACCOUNT_ID }}.dkr.ecr.${{ env.AWS_REGION }}.amazonaws.com/backend_ventas:eks-v1
+            ${{ env.AWS_ACCOUNT_ID }}.dkr.ecr.${{ env.AWS_REGION }}.amazonaws.com/backend_ventas:${{ github.sha }}
+
+      - name: Build y push backend despachos
+        uses: docker/build-push-action@v6
+        with:
+          context: ./back-Despachos_SpringBoot/Springboot-API-REST-DESPACHO
+          file: ./back-Despachos_SpringBoot/Springboot-API-REST-DESPACHO/Dockerfile
+          push: true
+          tags: |
+            ${{ env.AWS_ACCOUNT_ID }}.dkr.ecr.${{ env.AWS_REGION }}.amazonaws.com/backend_despachos:eks-v1
+            ${{ env.AWS_ACCOUNT_ID }}.dkr.ecr.${{ env.AWS_REGION }}.amazonaws.com/backend_despachos:${{ github.sha }}
+
+      - name: Build y push frontend
+        uses: docker/build-push-action@v6
+        with:
+          context: ./front_despacho
+          file: ./front_despacho/Dockerfile
+          push: true
+          tags: |
+            ${{ env.AWS_ACCOUNT_ID }}.dkr.ecr.${{ env.AWS_REGION }}.amazonaws.com/frontend:eks-v1
+            ${{ env.AWS_ACCOUNT_ID }}.dkr.ecr.${{ env.AWS_REGION }}.amazonaws.com/frontend:${{ github.sha }}
+
+      - name: Conectar kubectl con EKS
+        run: |
+          aws eks update-kubeconfig --region $AWS_REGION --name $EKS_CLUSTER_NAME
+
+      - name: Desplegar aplicación en EKS
+        run: |
+          kubectl apply -f k8s/namespace.yaml
+          kubectl apply -f k8s/backend-ventas-deployment.yaml
+          kubectl apply -f k8s/backend-ventas-service.yaml
+          kubectl apply -f k8s/backend-ventas-hpa.yaml
+          kubectl apply -f k8s/backend-despachos-deployment.yaml
+          kubectl apply -f k8s/backend-despachos-service.yaml
+          kubectl apply -f k8s/backend-despachos-hpa.yaml
+          kubectl apply -f k8s/frontend-deployment.yaml
+          kubectl apply -f k8s/frontend-service.yaml
+
+      - name: Reiniciar deployments
+        run: |
+          kubectl rollout restart deployment/backend-ventas -n tienda
+          kubectl rollout restart deployment/backend-despachos -n tienda
+          kubectl rollout restart deployment/frontend -n tienda
+
+      - name: Verificar despliegue
+        run: |
+          kubectl rollout status deployment/backend-ventas -n tienda
+          kubectl rollout status deployment/backend-despachos -n tienda
+          kubectl rollout status deployment/frontend -n tienda
+
+      - name: Mostrar recursos finales
+        run: |
+          kubectl get pods -n tienda
+          kubectl get svc -n tienda
+          kubectl get hpa -n tienda
