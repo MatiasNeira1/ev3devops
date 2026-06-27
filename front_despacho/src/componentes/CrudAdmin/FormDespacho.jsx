@@ -25,7 +25,7 @@ export const FormDespacho = ({ venta, onClose }) => {
 
     try {
       await axios.put(
-        `http://192.168.30/api/v1/ventas/${venta.idVenta}`,
+        `http://a0b5476e3eb7844b8a50f1de0e5bef48-1951118946.us-east-1.elb.amazonaws.com/api/v1/ventas/${venta.idVenta}`,
         jsonDataSales,
         {
           headers:{
@@ -34,7 +34,7 @@ export const FormDespacho = ({ venta, onClose }) => {
       }
         }
       );
-      await axios.post("http://192.168.320/api/v1/despachos", jsonData, {
+      await axios.post("http:// aeec300401e09461a8d537cdfa9fa883-617817421.us-east-1.elb.amazonaws.com/api/v1/despachos", jsonData, {
         headers:{
           'Content-Type': 'application/json',
           'Accept': 'application/json'
